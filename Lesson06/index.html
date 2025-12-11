@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <title>Lesson06 | Three.jsで扱える様々な「形状」と「質感」</title>
+  <style>
+    body { margin: 0; overflow: hidden; }
+  </style>
+</head>
+<body>
+  <!-- canvas要素を用意 -->
+  <canvas id="canvas"></canvas>
+  <!-- Three.js をCDNから読み込む -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.164.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.164.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module">
+  import { setupThreeEnvironment } from '../three/three-setup.js';
+  import { setupPointerLockControls } from '../three/pointer-lock.js';
+  import { setupMovement } from '../three/movement.js';
+  import * as THREE from 'three';
+
+  // 基本オブジェクト一式
+  const canvas = document.querySelector("#canvas");
+  const { renderer, scene, camera } = setupThreeEnvironment(canvas);
+
+  // PointerLockControls
+  const { controls, isLockedRef } = setupPointerLockControls(camera, renderer.domElement);
+
+  // Movement
+  const movement = setupMovement(camera);
+
+  // 複数の木を植えるサンプル
+  function createWoods(scene, areaSize = 100, treeCount = 10, minDist = 10) {
+    const woods = new THREE.Group();
+
+    const placed = [];
+
+    // 他の木と重ならない位置を見つける
+    function getNonOverlappingPosition() {
+      let tries = 0;
+      while (tries < treeCount * 10) {
+        const x = (Math.random() - 0.5) * areaSize;
+        const z = (Math.random() - 0.5) * areaSize;
+
+        let ok = true;
+
+        // 中心付近も避ける
+        if (Math.sqrt(x * x + z * z) < minDist * 4) ok = false;
+
+        for (const p of placed) {
+          const dx = x - p.x;
+          const dz = z - p.z;
+          if (Math.sqrt(dx * dx + dz * dz) < minDist) {
+            ok = false;
+            break;
+          }
+        }
+        if (ok) return { x, z };
+        tries++;
+      }
+      return { x: 0, z: 0 };
+    }
+
+    for (let i = 0; i < treeCount; i++) {
+      const tree = createTree();
+      const pos = getNonOverlappingPosition();
+      placed.push(pos);
+      tree.position.set(pos.x, 0, pos.z);
+
+      // 大小揺らぎを与える
+      const s = 0.8 + Math.random() * 0.4;
+      tree.scale.set(s, s, s);
+
+      woods.add(tree);
+    }
+
+    scene.add(woods);
+  }
+
+  // 単一の木を作成する関数
+  function createTree(treeHeight = 24) {
+    // スケーリング用パラメータ
+    const trunkHeight = treeHeight * 2 / 3;
+    const trunkRadius = treeHeight / 20;
+    const foliageHeight = treeHeight * 2 / 3;
+    const foliageRadius = treeHeight / 3;
+    const levels = Math.ceil(Math.random() * 3) + 3; //4〜6段
+
+    // 木のグループを作成
+    const tree = new THREE.Group();
+
+    // 幹
+    const trunkGeo = new THREE.CylinderGeometry(trunkRadius * 0.85, trunkRadius, trunkHeight, 12);
+    const trunkMat = new THREE.MeshLambertMaterial({ color: 0x442211 });
+    const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+    trunk.position.y = trunkHeight / 2;
+    trunk.castShadow = true;
+    trunk.receiveShadow = true;
+    tree.add(trunk);
+
+    // 針葉 (複数の円錐を積み重ねて針葉樹っぽくする)
+    const foliageMat = new THREE.MeshLambertMaterial({ color: 0x00ff88 });
+
+    // levels数だけコーンを積み上げる
+    for (let i = 0; i < levels; i++) {
+      // コーンは上に行くほど高さが小さく、半径が小さくなる
+      const t = i / levels;
+      const levelHeight = foliageHeight * (2 - t) / levels;
+      const levelRadius = foliageRadius * (1 - t);
+
+      // コーンの形状とメッシュ
+      const coneGeo = new THREE.ConeGeometry(levelRadius, levelHeight, 16, 1);
+      const cone = new THREE.Mesh(coneGeo, foliageMat);
+
+      // 底辺が幹の上に重なるように配置
+      const yOffset = trunkHeight + i * (foliageHeight / levels) - foliageHeight / 2;
+      cone.position.y = yOffset + levelHeight / 2;
+
+      // 少しスケールのゆらぎを与えて自然に見せる
+      const s = 0.9 + Math.random() * 0.2;
+      cone.scale.set(s, 1, s);
+
+      cone.castShadow = true;
+      cone.receiveShadow = true;
+      tree.add(cone);
+    }
+
+    return tree;
+  }
+
+  function createCar(scene) {
+    const car = new THREE.Group();
+
+    // ボディ (台座)
+    const baseGeo = new THREE.BoxGeometry(34, 6, 18);
+    const baseMat = new THREE.MeshStandardMaterial({color:0xd9534f, metalness:0.2, roughness:0.4});
+    const base = new THREE.Mesh(baseGeo, baseMat);
+    base.position.y = 6;
+    base.castShadow = true;
+    base.receiveShadow = true;
+    car.add(base);
+
+    // キャビン (上部)
+    const cabinGeo = new THREE.BoxGeometry(16, 9, 16);
+    const cabinMat = new THREE.MeshStandardMaterial({color:0xff6b6b, metalness:0.1, roughness:0.4});
+    const cabin = new THREE.Mesh(cabinGeo, cabinMat);
+    cabin.position.set(-1, 11.5, 0);
+    cabin.castShadow = true;
+    car.add(cabin);
+
+    // フロントバンパー
+    const bumperGeo = new THREE.BoxGeometry(2, 2, 18);
+    const bumperMat = new THREE.MeshStandardMaterial({color:0x333333, metalness:0.7, roughness:0.35});
+    const bumper = new THREE.Mesh(bumperGeo, bumperMat);
+    bumper.position.set(17, 5, 0);
+    bumper.castShadow = true;
+    car.add(bumper);
+
+    // ライト
+    const headGeo = new THREE.CircleGeometry(1.3, 12);
+    const headLightMat = new THREE.MeshStandardMaterial({emissive:0xffffcc, emissiveIntensity:1, color:0x222222});
+    const leftHead = new THREE.Mesh(headGeo, headLightMat);
+    leftHead.position.set(17, 7, 4.5);
+    leftHead.rotation.y = Math.PI / 2;
+    leftHead.castShadow = false;
+    car.add(leftHead);
+    const rightHead = leftHead.clone();
+    rightHead.position.z = - 4.5;
+    car.add(rightHead);
+
+    // リア荷台 (小さなトラック風)
+    const bedGeo = new THREE.BoxGeometry(12, 4, 16);
+    const bedMat = new THREE.MeshStandardMaterial({color:0xc9302c, metalness:0.2, roughness:0.4});
+    const bed = new THREE.Mesh(bedGeo, bedMat);
+    bed.position.set(-17, 9, 0);
+    bed.castShadow = true;
+    car.add(bed);
+
+    // ホイール
+    const wheelGroup = new THREE.Group();
+    const tireGeo = new THREE.CylinderGeometry(3.5, 3.5, 4, 24);
+    const rimGeo = new THREE.CylinderGeometry(1.8, 1.8, 4.2, 24);
+    const wheelMat = new THREE.MeshStandardMaterial({color:0x111111, metalness:0.2, roughness:0.8});
+    const rimMat = new THREE.MeshStandardMaterial({color:0x9aa0a6, metalness:0.9, roughness:0.2});
+
+    function makeWheel(x, z){
+      const tire = new THREE.Mesh(tireGeo, wheelMat);
+      tire.rotation.y = Math.PI / 2;
+      tire.rotation.z = Math.PI / 2;
+      tire.position.set(x, 3.5, z);
+      tire.castShadow = true;
+
+      const rim = new THREE.Mesh(rimGeo, rimMat);
+      rim.rotation.y = Math.PI / 2;
+      rim.rotation.z = Math.PI / 2;
+      rim.position.set(x, 3.5, z);
+      rim.castShadow = false;
+
+      const w = new THREE.Group();
+      w.add(tire);
+      w.add(rim);
+      return w;
+    }
+
+    const wheelFL = makeWheel(10.5, 9);
+    const wheelFR = makeWheel(10.5, -9);
+    const wheelRL = makeWheel(-10.5, 9);
+    const wheelRR = makeWheel(-10.5, -9);
+
+    car.add(wheelFL, wheelFR, wheelRL, wheelRR);
+
+    car.position.y = 0;
+    car.rotation.y = Math.PI / 3;
+
+    scene.add(car);
+  }
+
+  createWoods(scene, 100, 10, 10);
+  createCar(scene);
+
+  // 毎フレーム呼ばれるループ処理
+  function tick() {
+    // pointer-lock.js 側の状態を見る
+    if (isLockedRef()) {
+      // movement.js 側で計算した移動ベクトルをカメラに反映
+      const dir = movement.getMovementVector();
+      camera.position.add(dir);
+    }
+
+    renderer.render(scene, camera);
+    requestAnimationFrame(tick);
+  }
+
+  // Start!!
+  tick();
+
+</script>
+</body>
+</html>
